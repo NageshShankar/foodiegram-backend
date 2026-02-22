@@ -1,0 +1,15 @@
+node_modules/
+.env
+*.log
+*.txt
+test_config.js
+DEBUG_EMAIL_ISSUE.js
+test-admin-email.js
+test-email.js
+drop-index.js
+app_error.txt
+error.txt
+error_ascii.txt
+server_log.txt
+test_output.txt
+.DS_Store
