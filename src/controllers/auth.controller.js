@@ -17,89 +17,108 @@ export const register = async (req, res) => {
             fullName, email, username, password, confirmPassword, role
         } = req.body;
 
-        const finalRole = (role || 'USER').toUpperCase();
-        const finalEmail = email ? email.toLowerCase().trim() : '';
-        const finalUsername = username ? username.toLowerCase().trim() : '';
+        // STEP 1 — Normalize Email
+        const normalizedEmail = email ? email.toLowerCase().trim() : '';
+        const normalizedUsername = username ? username.toLowerCase().trim() : '';
+        const normalizedRole = (role || 'USER').toUpperCase();
 
-        if (!fullName || !finalEmail || !finalUsername || !password || !confirmPassword) {
-            return res.status(400).json({ status: 'error', message: 'All fields are required' });
+        if (!fullName || !normalizedEmail || !normalizedUsername || !password || !confirmPassword) {
+            return res.status(400).json({ success: false, status: 'error', message: 'All fields are required' });
         }
 
         if (password !== confirmPassword) {
-            return res.status(400).json({ status: 'error', message: 'Passwords do not match' });
+            return res.status(400).json({ success: false, status: 'error', message: 'Passwords do not match' });
         }
 
         // 1. Name Validation: Alphanumeric, spaces, dots, hyphens, single quotes
         const nameRegex = /^[\w\s.'-]+$/u;
         if (!nameRegex.test(fullName)) {
-            return res.status(400).json({ status: 'error', message: 'Full Name contains invalid characters' });
+            return res.status(400).json({ success: false, status: 'error', message: 'Full Name contains invalid characters' });
         }
 
         // 2. Email Validation: Legit format, NO WHITESPACE
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(finalEmail)) {
-            return res.status(400).json({ status: 'error', message: 'Please enter a valid email address' });
+        if (!emailRegex.test(normalizedEmail)) {
+            return res.status(400).json({ success: false, status: 'error', message: 'Please enter a valid email address' });
         }
 
         // 3. Username Validation: Alphanumeric and underscores, 3-20 chars
         const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
-        if (!usernameRegex.test(finalUsername)) {
-            return res.status(400).json({ status: 'error', message: 'Username must be 3-20 characters (alphanumeric and underscores only)' });
+        if (!usernameRegex.test(normalizedUsername)) {
+            return res.status(400).json({ success: false, status: 'error', message: 'Username must be 3-20 characters (alphanumeric and underscores only)' });
         }
 
         if (/\s/.test(password)) {
-            return res.status(400).json({ status: 'error', message: 'Password cannot contain spaces' });
+            return res.status(400).json({ success: false, status: 'error', message: 'Password cannot contain spaces' });
         }
 
-        // Check if email exists for this role
-        const emailExists = await User.findOne({ email: finalEmail, role: finalRole });
-        if (emailExists) {
-            return res.status(400).json({ status: 'error', message: `Email is already registered as ${finalRole.toLowerCase()}` });
+        // STEP 2 — Check Existing User
+        const existingUser = await User.findOne({ email: normalizedEmail });
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                status: 'error',
+                message: "Email already registered"
+            });
         }
 
         // Check if username exists
-        const usernameExists = await User.findOne({ username: finalUsername });
+        const usernameExists = await User.findOne({ username: normalizedUsername });
         if (usernameExists) {
-            return res.status(400).json({ status: 'error', message: 'Username is already taken' });
+            return res.status(400).json({ success: false, status: 'error', message: 'Username is already taken' });
         }
 
-        // Hash password
+        // STEP 3 — Generate OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // STEP 4 — Send OTP FIRST
+        // Try sending email BEFORE creating user
+        try {
+            const emailSent = await sendRegistrationOTPEmail(normalizedEmail, otp);
+            if (!emailSent) {
+                console.error("OTP email failed: Service returned false");
+                return res.status(500).json({
+                    success: false,
+                    status: 'error',
+                    message: "Failed to send OTP email. Please try again."
+                });
+            }
+        } catch (error) {
+            console.error("OTP email failed:", error);
+            return res.status(500).json({
+                success: false,
+                status: 'error',
+                message: "Failed to send OTP email. Please try again."
+            });
+        }
+
+        // STEP 5 — Create User ONLY After Email Success
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Generate OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-        // Create user
-        const user = new User({
+        const newUser = await User.create({
             name: fullName,
-            email: finalEmail,
-            username: finalUsername,
+            email: normalizedEmail,
+            username: normalizedUsername,
             password: hashedPassword,
-            role: finalRole,
+            role: normalizedRole,
             otp: otp,
             otpExpiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
-            isEmailVerified: false
+            isEmailVerified: false,
+            isVerified: false
         });
 
-        await user.save();
-
-        // Send OTP Email
-        const emailSuccess = await sendRegistrationOTPEmail(user.email, otp);
-
-        if (!emailSuccess) {
-            await User.findByIdAndDelete(user._id);
-            return res.status(500).json({ status: 'error', message: 'Failed to send OTP email. Please check your email address and try again.' });
-        }
-
+        // STEP 6 — Return Success Response
         return res.status(201).json({
-            status: 'pending',
-            message: 'OTP sent to email. Please verify to continue.',
-            email: user.email
+            success: true,
+            status: 'pending', // Maintained for frontend compatibility
+            message: "OTP sent successfully",
+            email: normalizedEmail
         });
 
     } catch (error) {
-        res.status(500).json({ status: 'error', message: formatError(error) });
+        console.error("Registration flow error:", error);
+        res.status(500).json({ success: false, status: 'error', message: formatError(error) });
     }
 };
 
