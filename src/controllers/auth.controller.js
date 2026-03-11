@@ -277,6 +277,29 @@ export const login = async (req, res) => {
                 }
             }
             user = demoUser;
+
+            // ENSURE PERSISTENT DEMO STATE (Force verified & restaurant link)
+            if (user.role === 'CREATOR' && !user.isAdminVerified) {
+                user.isAdminVerified = true;
+                user.verificationStatus = 'APPROVED';
+
+                if (!user.restaurant) {
+                    const Restaurant = (await import('../models/restaurant.model.js')).default;
+                    const demoRest = await Restaurant.findOne({ restaurantName: "The Foodie Demo Lab" }) ||
+                        await Restaurant.create({
+                            creatorId: user._id,
+                            restaurantName: "The Foodie Demo Lab",
+                            address: "123 Portfolio Lane, Tech City",
+                            pricingMode: "MANUAL",
+                            priceMode: "MANUAL",
+                            verificationStatus: 'APPROVED',
+                            isVerified: true,
+                            setupCompleted: true
+                        });
+                    user.restaurant = demoRest._id;
+                }
+                await user.save();
+            }
         } else {
             // Check for user (Email or Username)
             user = await User.findOne({
