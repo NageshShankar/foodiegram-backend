@@ -33,7 +33,7 @@ export const setupRestaurantDetails = async (req, res) => {
             restaurantPhoto = `/uploads/restaurants/${req.file.filename}`;
         }
 
-        // 1. Create or Update Restaurant
+        // 1. Create or Update Restaurant (DEMO MODE: Auto-Verified)
         const restaurantData = {
             restaurantName,
             name: restaurantName,
@@ -42,10 +42,15 @@ export const setupRestaurantDetails = async (req, res) => {
             priceMode,
             zomatoLink,
             swiggyLink,
-            restaurantPhoto,
-            verificationStatus: 'PENDING',
-            verificationSubmittedAt: Date.now()
+            verificationStatus: 'APPROVED', // Auto-approved for demo
+            verificationSubmittedAt: Date.now(),
+            verifiedAt: Date.now(),
+            setupCompleted: true // Skip further setup steps in demo
         };
+
+        if (restaurantPhoto) {
+            restaurantData.restaurantPhoto = restaurantPhoto;
+        }
 
         // Check if GST is already taken by ANOTHER restaurant
         const existingGst = await Restaurant.findOne({ gstNumber });
@@ -67,28 +72,19 @@ export const setupRestaurantDetails = async (req, res) => {
             await user.save();
         }
 
-        // 2. Set user verification status to PENDING
-        user.verificationStatus = 'PENDING';
-        user.isVerified = false;
+        // 2. Set user verification status to APPROVED (DEMO MODE)
+        user.verificationStatus = 'APPROVED';
+        user.isVerified = true;
+        user.isAdminVerified = true;
         await user.save();
 
-        // 3. Generate verification token & Send Admin Email
-        try {
-            const token = VerificationToken.generateToken();
-            await VerificationToken.create({
-                restaurantId: restaurant._id,
-                token
-            });
-            await sendRestaurantVerificationEmail(user, restaurant, token);
-            console.log(`[CREATOR] Admin verification email sent for ${restaurant.restaurantName}`);
-        } catch (emailErr) {
-            console.error('[CREATOR] Admin email trigger failed:', emailErr);
-        }
+        // 3. Email Sending Disabled (DEMO MODE)
+        console.log(`[CREATOR] DEMO MODE: Auto-verified restaurant ${restaurant.restaurantName} for user ${user.email}`);
 
         res.status(200).json({
             status: 'success',
-            nextStep: "VERIFICATION_PENDING",
-            message: "Restaurant details submitted. Admin will verify shortly."
+            nextStep: "READY",
+            message: "Demo Mode: Account verified by admin! You now have full access."
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: formatError(error) });

@@ -6,8 +6,12 @@ import { isVerified } from '../middleware/verification.middleware.js';
 
 const router = express.Router();
 
-router.post('/connect', protect, creatorOnly, isVerified, connectPos);
-router.post('/map-items', protect, creatorOnly, isVerified, mapPosItems);
-router.get('/menu', protect, creatorOnly, isVerified, getPosMenu);
+router.use(protect);
+router.use(creatorOnly);
+router.use(isVerified);
+
+router.post('/connect', connectPos);
+router.post('/map-items', mapPosItems);
+router.get('/menu', getPosMenu);
 
 export default router;

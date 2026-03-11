@@ -14,16 +14,17 @@ import { isVerified } from '../middleware/verification.middleware.js';
 
 const router = express.Router();
 
+// Public
 router.get('/', getRestaurants);
 router.get('/:id', getRestaurant);
 router.get('/:id/details', getRestaurantDetails);
 
-// Follow Routes
+// Follow — open to all authenticated users including unverified creators
 router.post('/:id/follow', protect, followRestaurant);
 router.delete('/:id/unfollow', protect, unfollowRestaurant);
 
-// Onboarding Routes (Protected + Creator Only)
-router.put('/setup/basic', protect, creatorOnly, updateBasicInfo); // Allow update for verification
+// Onboarding setup — exempt from admin restriction
+router.put('/setup/basic', protect, creatorOnly, updateBasicInfo);
 router.put('/setup/pos-info', protect, creatorOnly, isVerified, updatePosInfo);
 router.put('/setup/manual-info', protect, creatorOnly, isVerified, updateManualInfo);
 

@@ -19,7 +19,35 @@ const app = express();
 const __dirname = path.resolve();
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.FRONTEND_URL,
+    'https://foodiegram-frontend.vercel.app' // Add production URL if known
+].filter(Boolean);
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        // Check if origin is in the allowed list or is a localhost/127.0.0.1 origin
+        const isAllowed = allowedOrigins.includes(origin) ||
+            origin.includes('localhost') ||
+            origin.includes('127.0.0.1') ||
+            origin.includes('.loca.lt'); // LocalTunnel support
+
+        if (isAllowed) {
+            callback(null, true);
+        } else {
+            console.log(`[CORS] Rejected origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
+}));
 app.use(express.json());
 
 // Request logger for debugging

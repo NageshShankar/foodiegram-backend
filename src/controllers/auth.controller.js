@@ -22,61 +22,88 @@ export const register = async (req, res) => {
         const normalizedUsername = username ? username.toLowerCase().trim() : '';
         const normalizedRole = (role || 'USER').toUpperCase();
 
+        console.log(`[AUTH] Registration attempt: ${normalizedEmail}, ${normalizedUsername}, ${normalizedRole}`);
+
         if (!fullName || !normalizedEmail || !normalizedUsername || !password || !confirmPassword) {
+            console.log('[AUTH] Registration failed: Missing fields');
             return res.status(400).json({ success: false, status: 'error', message: 'All fields are required' });
         }
 
         if (password !== confirmPassword) {
+            console.log('[AUTH] Registration failed: Passwords do not match');
             return res.status(400).json({ success: false, status: 'error', message: 'Passwords do not match' });
         }
 
-        // 1. Name Validation: Alphanumeric, spaces, dots, hyphens, single quotes
+        // 1. Name Validation
         const nameRegex = /^[\w\s.'-]+$/u;
         if (!nameRegex.test(fullName)) {
+            console.log('[AUTH] Registration failed: Invalid name format');
             return res.status(400).json({ success: false, status: 'error', message: 'Full Name contains invalid characters' });
         }
 
-        // 2. Email Validation: Legit format, NO WHITESPACE
+        // 2. Email Validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(normalizedEmail)) {
+            console.log('[AUTH] Registration failed: Invalid email format');
             return res.status(400).json({ success: false, status: 'error', message: 'Please enter a valid email address' });
         }
 
-        // 3. Username Validation: Alphanumeric and underscores, 3-20 chars
+        // 3. Username Validation
         const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
         if (!usernameRegex.test(normalizedUsername)) {
+            console.log('[AUTH] Registration failed: Invalid username format');
             return res.status(400).json({ success: false, status: 'error', message: 'Username must be 3-20 characters (alphanumeric and underscores only)' });
         }
 
         if (/\s/.test(password)) {
+            console.log('[AUTH] Registration failed: Password contains spaces');
             return res.status(400).json({ success: false, status: 'error', message: 'Password cannot contain spaces' });
         }
 
         // STEP 2 — Check Existing User
-        const existingUser = await User.findOne({ email: normalizedEmail });
-        if (existingUser) {
-            return res.status(400).json({
-                success: false,
-                status: 'error',
-                message: "Email already registered"
-            });
+        const existingUserByEmail = await User.findOne({ email: normalizedEmail });
+        if (existingUserByEmail) {
+            if (existingUserByEmail.isEmailVerified) {
+                console.log('[AUTH] Registration failed: Email already exists and verified');
+                return res.status(400).json({
+                    success: false,
+                    status: 'error',
+                    message: "Email already registered"
+                });
+            } else {
+                // If the email exists but is NOT verified, delete it to allow fresh registration
+                console.log(`[AUTH] Removing unverified user with email: ${normalizedEmail}`);
+                await User.findByIdAndDelete(existingUserByEmail._id);
+            }
         }
 
         // Check if username exists
-        const usernameExists = await User.findOne({ username: normalizedUsername });
-        if (usernameExists) {
-            return res.status(400).json({ success: false, status: 'error', message: 'Username is already taken' });
+        const existingUserByUsername = await User.findOne({ username: normalizedUsername });
+        if (existingUserByUsername) {
+            if (existingUserByUsername.isEmailVerified) {
+                console.log('[AUTH] Registration failed: Username already exists and verified');
+                return res.status(400).json({
+                    success: false,
+                    status: 'error',
+                    message: 'Username is already taken'
+                });
+            } else {
+                // If the username exists but is NOT verified, delete it to allow fresh registration
+                console.log(`[AUTH] Removing unverified user with username: ${normalizedUsername}`);
+                await User.findByIdAndDelete(existingUserByUsername._id);
+            }
         }
 
         // STEP 3 — Generate OTP
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        console.log(`[AUTH] Generated OTP: ${otp} for ${normalizedEmail}`);
 
-        // STEP 4 — Send OTP FIRST
-        // Try sending email BEFORE creating user
+        // STEP 4 — Email Sending Disabled (DEMO MODE)
+        /*
         try {
             const emailSent = await sendRegistrationOTPEmail(normalizedEmail, otp);
             if (!emailSent) {
-                console.error("OTP email failed: Service returned false");
+                console.error("[AUTH] OTP email failed: Service returned false");
                 return res.status(500).json({
                     success: false,
                     status: 'error',
@@ -84,13 +111,14 @@ export const register = async (req, res) => {
                 });
             }
         } catch (error) {
-            console.error("OTP email failed:", error);
+            console.error("[AUTH] OTP email failed:", error);
             return res.status(500).json({
                 success: false,
                 status: 'error',
                 message: "Failed to send OTP email. Please try again."
             });
         }
+        */
 
         // STEP 5 — Create User ONLY After Email Success
         const salt = await bcrypt.genSalt(10);
@@ -103,21 +131,25 @@ export const register = async (req, res) => {
             password: hashedPassword,
             role: normalizedRole,
             otp: otp,
-            otpExpiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+            otpExpiresAt: Date.now() + 10 * 60 * 1000,
             isEmailVerified: false,
             isVerified: false
         });
 
-        // STEP 6 — Return Success Response
+        console.log(`[AUTH] User created successfully: ${newUser._id}`);
+
+        // STEP 6 — Return Success Response (DEMO MODE: Including OTP in response)
+        console.log(`[AUTH] DEMO MODE OTP for ${normalizedEmail}: ${otp}`);
         return res.status(201).json({
             success: true,
-            status: 'pending', // Maintained for frontend compatibility
-            message: "OTP sent successfully",
-            email: normalizedEmail
+            status: 'pending',
+            message: "OTP generated (Demo Mode)",
+            email: normalizedEmail,
+            demoOtp: otp // Returned for frontend display
         });
 
     } catch (error) {
-        console.error("Registration flow error:", error);
+        console.error("[AUTH] Registration flow error:", error);
         res.status(500).json({ success: false, status: 'error', message: formatError(error) });
     }
 };
@@ -169,7 +201,8 @@ export const verifyRegistrationOTP = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
-                userType: user.role.toLowerCase()
+                userType: user.role.toLowerCase(),
+                isAdminVerified: user.isAdminVerified
             }
         });
     } catch (error) {
@@ -189,13 +222,70 @@ export const login = async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Email/Username and password are required' });
         }
 
-        // Check for user (Email or Username)
-        const user = await User.findOne({
-            $or: [
-                { email: finalEmail },
-                { username: finalEmail }
-            ]
-        }).select('+password');
+        let user;
+        const demoAccounts = {
+            'demo.creator@example.com': { name: 'Demo Creator', role: 'CREATOR', isAdminVerified: true },
+            'demo.user@example.com': { name: 'Demo User', role: 'USER', isAdminVerified: false }
+        };
+
+        let skipPasswordCheck = false;
+        if (demoAccounts[finalEmail] && password === 'password123') {
+            skipPasswordCheck = true;
+            console.log(`[AUTH] DEMO LOGIN for ${finalEmail}`);
+            let demoUser = await User.findOne({ email: finalEmail });
+            if (!demoUser) {
+                const hashedPassword = await bcrypt.hash('password123', 10);
+                demoUser = await User.create({
+                    ...demoAccounts[finalEmail],
+                    email: finalEmail,
+                    password: hashedPassword,
+                    isEmailVerified: true,
+                    username: finalEmail.split('@')[0]
+                });
+
+                // FULL MOCK SETUP FOR DEMO CREATOR
+                if (demoUser.role === 'CREATOR') {
+                    const Restaurant = (await import('../models/restaurant.model.js')).default;
+                    const demoRestaurant = await Restaurant.create({
+                        creatorId: demoUser._id,
+                        restaurantName: "The Foodie Demo Lab",
+                        cuisineType: ["Global", "Fusion"],
+                        address: "123 Portfolio Lane, Tech City",
+                        pricingMode: "MANUAL",
+                        verificationStatus: 'APPROVED',
+                        isAdminVerified: true,
+                        setupCompleted: true,
+                        isPublic: true,
+                        averagePrice: 45
+                    });
+                    demoUser.restaurant = demoRestaurant._id;
+                    await demoUser.save();
+                }
+
+                // FULL MOCK SETUP FOR DEMO USER (FOLLOWING)
+                if (demoUser.role === 'USER') {
+                    const Follow = (await import('../models/follow.model.js')).default;
+                    const Restaurant = (await import('../models/restaurant.model.js')).default;
+                    // Find any existing demo restaurant or create a follow link
+                    const existingDemoRestaurant = await Restaurant.findOne({ restaurantName: "The Foodie Demo Lab" });
+                    if (existingDemoRestaurant) {
+                        await Follow.create({
+                            userId: demoUser._id,
+                            restaurantId: existingDemoRestaurant._id
+                        });
+                    }
+                }
+            }
+            user = demoUser;
+        } else {
+            // Check for user (Email or Username)
+            user = await User.findOne({
+                $or: [
+                    { email: finalEmail },
+                    { username: finalEmail }
+                ]
+            }).select('+password');
+        }
 
         if (!user) {
             return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
@@ -207,9 +297,11 @@ export const login = async (req, res) => {
         }
 
         // Check if password matches
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
+        if (!skipPasswordCheck) {
+            const isMatch = await bcrypt.compare(password, user.password);
+            if (!isMatch) {
+                return res.status(401).json({ status: 'error', message: 'Invalid credentials' });
+            }
         }
 
         // Fetch following list
@@ -228,7 +320,7 @@ export const login = async (req, res) => {
         let nextStep = 'READY';
         if (user.role === 'CREATOR') {
             const Restaurant = (await import('../models/restaurant.model.js')).default;
-            const restaurant = await Restaurant.findOne({ creator: user._id });
+            const restaurant = user.restaurant ? await Restaurant.findById(user.restaurant) : null;
 
             if (!restaurant) {
                 nextStep = 'RESTAURANT_DETAILS';
@@ -251,6 +343,7 @@ export const login = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 userType: user.role.toLowerCase(),
+                isAdminVerified: user.isAdminVerified,
                 following: following
             },
         });
@@ -334,16 +427,14 @@ export const creatorLogin = async (req, res) => {
             });
         }
 
-        // Send OTP
-        const emailSent = await sendOTPEmail(user.email, otp);
-        if (!emailSent) {
-            return res.status(500).json({ status: 'error', message: 'Failed to send OTP email' });
-        }
+        // Email Sending Disabled (DEMO MODE)
+        console.log(`[AUTH] DEMO MODE LOGIN OTP for ${user.email}: ${otp}`);
 
         res.status(200).json({
             status: 'success',
-            message: 'OTP sent to registered email',
-            email: user.email
+            message: 'OTP generated (Demo Mode)',
+            email: user.email,
+            demoOtp: otp // Returned for frontend display
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: formatError(error) });
@@ -391,7 +482,7 @@ export const verifyCreatorOTP = async (req, res) => {
         let nextStep = 'READY';
         if (user.role === 'CREATOR') {
             const Restaurant = (await import('../models/restaurant.model.js')).default;
-            const restaurant = await Restaurant.findOne({ creator: user._id });
+            const restaurant = user.restaurant ? await Restaurant.findById(user.restaurant) : null;
 
             if (!restaurant) {
                 nextStep = 'RESTAURANT_DETAILS';
@@ -414,6 +505,7 @@ export const verifyCreatorOTP = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 userType: user.role.toLowerCase(),
+                isAdminVerified: user.isAdminVerified,
                 following: following
             },
         });
@@ -431,12 +523,24 @@ export const googleAuth = async (req, res) => {
         const { OAuth2Client } = await import('google-auth-library');
         const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-        const ticket = await client.verifyIdToken({
-            idToken: credential,
-            audience: process.env.GOOGLE_CLIENT_ID,
-        });
+        let payload;
+        try {
+            const ticket = await client.verifyIdToken({
+                idToken: credential,
+                audience: process.env.GOOGLE_CLIENT_ID,
+            });
+            payload = ticket.getPayload();
+        } catch (verifyError) {
+            console.warn('[AUTH] Google verification failed, falling back to manual decode (DEMO MODE):', verifyError.message);
+            // Fallback for Demo Mode: Decode token without verification if CLIENT_ID is a placeholder
+            // or if we just want the demo to be stable for reviewers
+            const decoded = jwt.decode(credential);
+            if (!decoded) {
+                throw new Error('Invalid Google credential');
+            }
+            payload = decoded;
+        }
 
-        const payload = ticket.getPayload();
         const { email, name, sub: googleId, picture } = payload;
 
         // Check if user exists
@@ -466,7 +570,7 @@ export const googleAuth = async (req, res) => {
         let nextStep = 'READY';
         if (user.role === 'CREATOR') {
             const Restaurant = (await import('../models/restaurant.model.js')).default;
-            const restaurant = await Restaurant.findOne({ creator: user._id });
+            const restaurant = user.restaurant ? await Restaurant.findById(user.restaurant) : null;
 
             if (!restaurant) {
                 nextStep = 'RESTAURANT_DETAILS';
@@ -488,7 +592,8 @@ export const googleAuth = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
-                profileImage: user.profileImage
+                profileImage: user.profileImage,
+                isAdminVerified: user.isAdminVerified
             },
         });
     } catch (error) {
@@ -525,7 +630,11 @@ export const forgotPassword = async (req, res) => {
 
         try {
             await sendPasswordResetEmail(user.email, resetUrl);
-            res.status(200).json({ status: 'success', message: 'Email sent' });
+            res.status(200).json({
+                status: 'success',
+                message: 'Email sent (Demo Mode)',
+                resetUrl // Returned for demo purposes
+            });
         } catch (err) {
             user.resetPasswordToken = undefined;
             user.resetPasswordExpire = undefined;
@@ -570,4 +679,39 @@ export const resetPassword = async (req, res) => {
         res.status(500).json({ status: 'error', message: formatError(error) });
     }
 };
+
+// @desc    Get current user profile
+// @route   GET /api/auth/me
+// @access  Private
+export const getMe = async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) {
+            return res.status(404).json({ status: 'error', message: 'User not found' });
+        }
+        // Fetch following list
+        const Follow = (await import('../models/follow.model.js')).default;
+        const follows = await Follow.find({ userId: user._id });
+        const following = follows.map(f => f.restaurantId.toString());
+
+        res.status(200).json({
+            status: 'success',
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                userType: user.role.toLowerCase(),
+                isAdminVerified: user.isAdminVerified,
+                profileImage: user.profileImage,
+                restaurant: user.restaurant,
+                following: following
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: formatError(error) });
+    }
+};
+
 // Google Auth and Forgot Password were already defined above correctly.

@@ -19,6 +19,8 @@ import { getFollowers, getFollowing } from '../controllers/follow.controller.js'
 import { protect } from '../middleware/auth.middleware.js';
 import { creatorOnly } from '../middleware/role.middleware.js';
 import { isVerified } from '../middleware/verification.middleware.js';
+import { restrictUnverifiedCreatorUpload } from '../middleware/restrictCreatorUpload.js';
+
 
 const router = express.Router();
 
@@ -29,9 +31,7 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadDir);
-    },
+    destination: (req, file, cb) => { cb(null, uploadDir); },
     filename: (req, file, cb) => {
         cb(null, `rest-${Date.now()}${path.extname(file.originalname)}`);
     }
@@ -39,7 +39,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         const filetypes = /jpeg|jpg|png|webp/;
         const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
@@ -49,32 +49,32 @@ const upload = multer({
     }
 });
 
-// PART A - Onboarding Flow (New)
+// ─── Onboarding (No admin restriction — always accessible) ────────────────────
 router.post('/restaurant-details', protect, upload.single('restaurantPhoto'), setupRestaurantDetails);
-
-// PART B - Profile Status
 router.get('/profile-status', protect, creatorOnly, getProfileStatus);
 
-// Features (Enabled after verification)
-router.post('/pos/connect', protect, creatorOnly, isVerified, connectPos);
-router.post('/pos/map-menu', protect, creatorOnly, isVerified, mapPosItems);
-router.post('/pos/complete', protect, creatorOnly, isVerified, completePosSetup);
+// ─── Post-setup Features ──────────────────────────────────────────────────────
+router.post('/pos/connect', protect, creatorOnly, isVerified, restrictUnverifiedCreatorUpload, connectPos);
+router.post('/pos/map-menu', protect, creatorOnly, isVerified, restrictUnverifiedCreatorUpload, mapPosItems);
+router.post('/pos/complete', protect, creatorOnly, isVerified, restrictUnverifiedCreatorUpload, completePosSetup);
 
-router.post('/manual/add-menu', protect, creatorOnly, isVerified, addManualMenu);
-router.post('/manual/add-prices', protect, creatorOnly, isVerified, addManualPrices);
-router.post('/manual/complete', protect, creatorOnly, isVerified, completeManualSetup);
+router.post('/manual/add-menu', protect, creatorOnly, isVerified, restrictUnverifiedCreatorUpload, addManualMenu);
+router.post('/manual/add-prices', protect, creatorOnly, isVerified, restrictUnverifiedCreatorUpload, addManualPrices);
+router.post('/manual/complete', protect, creatorOnly, isVerified, restrictUnverifiedCreatorUpload, completeManualSetup);
+
 
 router.put('/select-price-mode', protect, selectPriceMode);
 router.post('/complete-manual-setup', protect, completeManualSetup);
 
-router.get('/:id', getCreatorProfile);
+// ─── Profile Editing (Open — unverified creators can still edit their profile) ─
 router.put('/profile', protect, isVerified, upload.single('profileImage'), updateCreatorProfile);
 router.put('/restaurant/profile', protect, creatorOnly, isVerified, upload.fields([
     { name: 'ambienceImages', maxCount: 10 },
     { name: 'menuImages', maxCount: 10 }
 ]), updateRestaurantProfile);
 
-// Follow lists
+// ─── Public Reads ─────────────────────────────────────────────────────────────
+router.get('/:id', getCreatorProfile);
 router.get('/:id/followers', getFollowers);
 router.get('/:id/following', getFollowing);
 

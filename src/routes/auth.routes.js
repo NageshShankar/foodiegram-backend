@@ -2,7 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { register, login, creatorLogin, verifyCreatorOTP, googleAuth, forgotPassword, resetPassword, verifyRegistrationOTP } from '../controllers/auth.controller.js';
+import { register, login, creatorLogin, verifyCreatorOTP, googleAuth, forgotPassword, resetPassword, verifyRegistrationOTP, getMe } from '../controllers/auth.controller.js';
+import { protect } from '../middleware/auth.middleware.js';
+
 import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
@@ -56,5 +58,7 @@ router.post('/creator/verify-otp', otpLimiter, verifyCreatorOTP);
 router.post('/google', googleAuth);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+router.get('/me', protect, getMe);
+
 
 export default router;

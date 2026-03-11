@@ -64,6 +64,10 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    isAdminVerified: {
+        type: Boolean,
+        default: false
+    },
     resetPasswordToken: String,
     resetPasswordExpire: Date,
 }, {

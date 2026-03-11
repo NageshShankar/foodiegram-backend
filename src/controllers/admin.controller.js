@@ -44,12 +44,16 @@ export const verifyCreator = async (req, res) => {
             await restaurant.save();
 
             if (user) {
+                user.isAdminVerified = true;
+                await user.save();
                 sendCreatorStatusEmail(user.email, 'Congratulations! Your account is APPROVED. You can now set up POS/Manual pricing and upload reels.');
             }
         } else {
             restaurant.verificationStatus = 'REJECTED';
             await restaurant.save();
             if (user) {
+                user.isAdminVerified = false;
+                await user.save();
                 sendCreatorStatusEmail(user.email, 'Your account verification was REJECTED.');
             }
         }
@@ -104,6 +108,7 @@ export const verifyRestaurant = async (req, res) => {
         if (user) {
             user.verificationStatus = 'APPROVED';
             user.isVerified = true;
+            user.isAdminVerified = true;
             await user.save();
             sendCreatorStatusEmail(user.email, 'Congratulations! Your restaurant account has been verified. You can now proceed normally.');
         }
@@ -160,6 +165,7 @@ export const rejectRestaurant = async (req, res) => {
         if (user) {
             user.verificationStatus = 'REJECTED';
             user.isVerified = false;
+            user.isAdminVerified = false;
             await user.save();
             sendCreatorStatusEmail(user.email, 'Your account does not seem genuine. Please try again creating the account.');
         }
