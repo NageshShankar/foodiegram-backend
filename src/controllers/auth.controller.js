@@ -249,16 +249,15 @@ export const login = async (req, res) => {
                     const demoRestaurant = await Restaurant.create({
                         creatorId: demoUser._id,
                         restaurantName: "The Foodie Demo Lab",
-                        cuisineType: ["Global", "Fusion"],
                         address: "123 Portfolio Lane, Tech City",
-                        pricingMode: "MANUAL",
+                        priceMode: "MANUAL",
                         verificationStatus: 'APPROVED',
-                        isAdminVerified: true,
-                        setupCompleted: true,
-                        isPublic: true,
-                        averagePrice: 45
+                        isVerified: true,
+                        setupCompleted: true
                     });
                     demoUser.restaurant = demoRestaurant._id;
+                    demoUser.isAdminVerified = true;
+                    demoUser.verificationStatus = 'APPROVED';
                     await demoUser.save();
                 }
 
@@ -279,24 +278,34 @@ export const login = async (req, res) => {
             user = demoUser;
 
             // ENSURE PERSISTENT DEMO STATE (Force verified & restaurant link)
-            if (user.role === 'CREATOR' && !user.isAdminVerified) {
+            if (user.role === 'CREATOR') {
                 user.isAdminVerified = true;
                 user.verificationStatus = 'APPROVED';
+                user.isEmailVerified = true;
 
+                const Restaurant = (await import('../models/restaurant.model.js')).default;
                 if (!user.restaurant) {
-                    const Restaurant = (await import('../models/restaurant.model.js')).default;
-                    const demoRest = await Restaurant.findOne({ restaurantName: "The Foodie Demo Lab" }) ||
-                        await Restaurant.create({
+                    let demoRest = await Restaurant.findOne({ restaurantName: "The Foodie Demo Lab" });
+                    if (!demoRest) {
+                        demoRest = await Restaurant.create({
                             creatorId: user._id,
                             restaurantName: "The Foodie Demo Lab",
                             address: "123 Portfolio Lane, Tech City",
-                            pricingMode: "MANUAL",
                             priceMode: "MANUAL",
                             verificationStatus: 'APPROVED',
                             isVerified: true,
                             setupCompleted: true
                         });
+                    }
                     user.restaurant = demoRest._id;
+                } else {
+                    // Force update existing restaurant to be "ready"
+                    await Restaurant.findByIdAndUpdate(user.restaurant, {
+                        verificationStatus: 'APPROVED',
+                        isVerified: true,
+                        setupCompleted: true,
+                        priceMode: "MANUAL"
+                    });
                 }
                 await user.save();
             }
