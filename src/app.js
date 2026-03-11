@@ -23,7 +23,8 @@ const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3001',
     process.env.FRONTEND_URL,
-    'https://foodiegram-frontend.vercel.app' // Add production URL if known
+    'https://foodiegram-frontend.vercel.app',
+    'https://foodiegram.vercel.app'
 ].filter(Boolean);
 
 app.use(cors({
