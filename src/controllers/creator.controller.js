@@ -166,13 +166,16 @@ export const getProfileStatus = async (req, res) => {
         const restaurant = user.restaurant;
         let nextStep = 'READY';
 
+        const demoEmails = ['demo.creator@example.com', 'demo.user@example.com'];
+        const isDemo = demoEmails.includes(user.email);
+
         // 3. Logic based on Verification Status (PART H)
         if (user.verificationStatus === 'REJECTED') {
             nextStep = 'BLOCKED_REJECTED';
         } else if (user.verificationStatus === 'PENDING') {
             nextStep = 'VERIFICATION_PENDING';
         } else if (user.verificationStatus === 'APPROVED') {
-            if (!restaurant.setupCompleted) {
+            if (!restaurant.setupCompleted && !isDemo) {
                 if (restaurant.priceMode === 'POS' && !restaurant.posConnected) {
                     nextStep = 'COMPLETE_POS_SETUP';
                 } else if (restaurant.priceMode === 'MANUAL') {
@@ -188,7 +191,7 @@ export const getProfileStatus = async (req, res) => {
                 verificationStatus: user.verificationStatus,
                 isVerified: user.isVerified,
                 priceMode: restaurant.priceMode,
-                setupCompleted: restaurant.setupCompleted || (user.verificationStatus === 'APPROVED' && restaurant.priceMode === 'MANUAL'),
+                setupCompleted: isDemo || restaurant.setupCompleted || (user.verificationStatus === 'APPROVED' && restaurant.priceMode === 'MANUAL'),
                 restaurantName: restaurant.restaurantName,
                 nextStep
             }
